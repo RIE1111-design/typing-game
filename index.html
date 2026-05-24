@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>タイピングゲーム</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0a1a;
+    color: #e0e0ff;
+    font-family: 'Courier New', monospace;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    user-select: none;
+  }
+
+  #hud {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 24px;
+    background: rgba(255,255,255,0.04);
+    border-bottom: 1px solid rgba(100,100,255,0.2);
+    font-size: 14px;
+    letter-spacing: 1px;
+  }
+
+  #hud span { color: #8888ff; }
+  #hud strong { color: #fff; font-size: 16px; }
+
+  .lives { color: #ff6688 !important; font-size: 18px !important; }
+
+  #arena {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .word {
+    position: absolute;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 18px;
+    font-weight: bold;
+    white-space: nowrap;
+    border: 1px solid;
+    transition: color 0.1s;
+    pointer-events: none;
+  }
+
+  .word.normal  { color: #88ddff; border-color: rgba(136,221,255,0.3); background: rgba(136,221,255,0.06); }
+  .word.fast    { color: #ffcc44; border-color: rgba(255,204,68,0.3);  background: rgba(255,204,68,0.06);  }
+  .word.danger  { color: #ff4466; border-color: rgba(255,68,102,0.3);  background: rgba(255,68,102,0.08);  }
+  .word.matched { color: #44ff99; border-color: rgba(68,255,153,0.5);  background: rgba(68,255,153,0.12); }
+
+  .word .typed-part { color: #44ff99; }
+
+  #input-zone {
+    padding: 16px 24px;
+    background: rgba(255,255,255,0.04);
+    border-top: 1px solid rgba(100,100,255,0.2);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  #input-zone label { color: #6666aa; font-size: 13px; letter-spacing: 2px; }
+
+  #typebox {
+    flex: 1;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(100,100,255,0.3);
+    border-radius: 6px;
+    color: #fff;
+    font-family: 'Courier New', monospace;
+    font-size: 20px;
+    padding: 8px 14px;
+    outline: none;
+    caret-color: #88ddff;
+    letter-spacing: 1px;
+  }
+
+  #typebox:focus { border-color: rgba(136,221,255,0.6); }
+  #typebox.wrong { border-color: rgba(255,68,102,0.8); background: rgba(255,68,102,0.08); }
+  #typebox.correct { border-color: rgba(68,255,153,0.8); }
+
+  #combo-display {
+    font-size: 13px;
+    color: #ffcc44;
+    min-width: 80px;
+    text-align: right;
+  }
+
+  /* Overlay screens */
+  .overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,5,0.88);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    z-index: 100;
+  }
+
+  .overlay h1 { font-size: 48px; letter-spacing: 6px; }
+  .overlay h2 { font-size: 28px; letter-spacing: 4px; color: #8888ff; }
+  .overlay p  { color: #8888aa; font-size: 14px; letter-spacing: 2px; }
+
+  .overlay .result {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(100,100,255,0.3);
+    border-radius: 8px;
+    padding: 20px 40px;
+    text-align: center;
+    line-height: 2;
+    font-size: 16px;
+  }
+
+  .btn {
+    margin-top: 10px;
+    padding: 12px 36px;
+    background: rgba(100,100,255,0.2);
+    border: 1px solid rgba(100,100,255,0.5);
+    color: #aaaaff;
+    font-family: 'Courier New', monospace;
+    font-size: 16px;
+    letter-spacing: 3px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+  }
+  .btn:hover { background: rgba(100,100,255,0.4); color: #fff; }
+
+  .grade { font-size: 64px; }
+
+  /* Particles */
+  .particle {
+    position: absolute;
+    pointer-events: none;
+    border-radius: 50%;
+    animation: burst 0.6s ease-out forwards;
+  }
+  @keyframes burst {
+    0%   { opacity: 1; transform: scale(1); }
+    100% { opacity: 0; transform: scale(0) translate(var(--tx), var(--ty)); }
+  }
+
+  /* Level-up flash */
+  #level-flash {
+    position: fixed; inset: 0;
+    pointer-events: none;
+    background: rgba(136,221,255,0.12);
+    opacity: 0;
+    z-index: 50;
+    transition: opacity 0.15s;
+  }
+  #level-flash.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div id="hud">
+  <div>SCORE: <strong id="score-val">0</strong></div>
+  <div>LEVEL: <strong id="level-val">1</strong></div>
+  <div class="lives">LIVES: <strong id="lives-val">❤️❤️❤️</strong></div>
+  <div>BEST: <strong id="best-val">0</strong></div>
+</div>
+
+<div id="arena"></div>
+
+<div id="input-zone">
+  <label>TYPE&gt;</label>
+  <input id="typebox" type="text" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="ここに入力..." />
+  <div id="combo-display"></div>
+</div>
+
+<div id="level-flash"></div>
+
+<!-- Start screen -->
+<div class="overlay" id="start-screen">
+  <h1 style="color:#88ddff">TYPING</h1>
+  <h2>落ちてくる単語を打ち込め！</h2>
+  <div class="result" style="font-size:14px; color:#8888aa; line-height:2.2">
+    <div style="color:#88ddff">青い単語</div>ノーマルスピード<br>
+    <div style="color:#ffcc44">黄色い単語</div>速い！ +2点<br>
+    <div style="color:#ff4466">赤い単語</div>超速い！ +3点<br>
+    <br>
+    <div style="color:#aaa">単語が画面下まで落ちると残機が減る</div>
+  </div>
+  <button class="btn" id="start-btn">スタート &nbsp;[Enter]</button>
+</div>
+
+<!-- Game over screen -->
+<div class="overlay" id="gameover-screen" style="display:none">
+  <h1 style="color:#ff4466">GAME OVER</h1>
+  <div class="grade" id="grade-display">C</div>
+  <div class="result" id="result-text"></div>
+  <button class="btn" id="retry-btn">もう一度 &nbsp;[Enter]</button>
+</div>
+
+<script>
+// ─── Word lists ────────────────────────────────────────────────────────────
+const WORDS = {
+  easy: [
+    'cat','dog','sun','run','fly','sky','ice','fog','map','jet',
+    'ねこ','いぬ','そら','かぜ','はな','みず','ほし','つき','やま','うみ',
+    'code','game','jump','cool','fast','blue','dark','fire','moon','star',
+  ],
+  medium: [
+    'python','sunset','mirror','rocket','jungle','castle','bridge','travel',
+    'さくら','きのこ','つばめ','ひかり','かみなり','たいよう','あらし',
+    'galaxy','frozen','player','typing','laptop','window','coffee','signal',
+  ],
+  hard: [
+    'keyboard','terminal','velocity','champion','algorithm','framework',
+    'うちゅうせん','ゲームオーバー','スコアアタック','プログラム',
+    'thunderstorm','javascript','adventure','telescope','spectacular',
+  ],
+};
+
+// ─── State ─────────────────────────────────────────────────────────────────
+let state = {
+  score: 0, level: 1, lives: 3,
+  combo: 0, maxCombo: 0,
+  wordsTyped: 0, wordsMissed: 0,
+  active: [],     // {el, text, x, y, speed, tier}
+  running: false,
+  spawnTimer: null,
+  dropInterval: null,
+  best: +localStorage.getItem('typing-best') || 0,
+};
+
+// ─── DOM refs ──────────────────────────────────────────────────────────────
+const arena       = document.getElementById('arena');
+const typebox     = document.getElementById('typebox');
+const scoreEl     = document.getElementById('score-val');
+const levelEl     = document.getElementById('level-val');
+const livesEl     = document.getElementById('lives-val');
+const bestEl      = document.getElementById('best-val');
+const comboEl     = document.getElementById('combo-display');
+const startScreen = document.getElementById('start-screen');
+const goScreen    = document.getElementById('gameover-screen');
+const levelFlash  = document.getElementById('level-flash');
+
+bestEl.textContent = state.best;
+
+// ─── Helpers ───────────────────────────────────────────────────────────────
+function randInt(a, b) { return Math.floor(Math.random() * (b - a + 1)) + a; }
+function pick(arr) { return arr[randInt(0, arr.length - 1)]; }
+
+function wordPool() {
+  if (state.level <= 2) return [...WORDS.easy];
+  if (state.level <= 4) return [...WORDS.easy, ...WORDS.medium];
+  return [...WORDS.medium, ...WORDS.hard];
+}
+
+function tierForLevel() {
+  const r = Math.random();
+  if (state.level <= 2) return 'normal';
+  if (state.level <= 4) return r < 0.25 ? 'fast' : 'normal';
+  return r < 0.15 ? 'danger' : r < 0.4 ? 'fast' : 'normal';
+}
+
+function tierSpeed(tier) {
+  const base = 0.5 + state.level * 0.18;
+  if (tier === 'fast')   return base * 1.6;
+  if (tier === 'danger') return base * 2.4;
+  return base;
+}
+
+function tierPoints(tier) {
+  if (tier === 'fast')   return 2;
+  if (tier === 'danger') return 3;
+  return 1;
+}
+
+function heartDisplay(n) {
+  return '❤️'.repeat(Math.max(0, n));
+}
+
+// ─── Spawn a word ──────────────────────────────────────────────────────────
+function spawnWord() {
+  if (!state.running) return;
+  const text  = pick(wordPool());
+  const tier  = tierForLevel();
+  const speed = tierSpeed(tier);
+  const arenaW = arena.clientWidth;
+
+  const el = document.createElement('div');
+  el.className = `word ${tier}`;
+  el.textContent = text;
+  arena.appendChild(el);
+
+  const x = randInt(10, arenaW - 160);
+  el.style.left = x + 'px';
+  el.style.top  = '-40px';
+
+  state.active.push({ el, text, x, y: -40, speed, tier });
+}
+
+// ─── Drop loop (60fps-ish via rAF) ────────────────────────────────────────
+let lastTime = 0;
+function dropLoop(ts) {
+  if (!state.running) return;
+  const dt = ts - lastTime;
+  lastTime = ts;
+  const arenaH = arena.clientHeight;
+
+  for (let i = state.active.length - 1; i >= 0; i--) {
+    const w = state.active[i];
+    w.y += w.speed * (dt / 16.67);
+    w.el.style.top = w.y + 'px';
+
+    if (w.y > arenaH + 10) {
+      w.el.remove();
+      state.active.splice(i, 1);
+      loseLife();
+    }
+  }
+  requestAnimationFrame(dropLoop);
+}
+
+// ─── Spawn scheduler ──────────────────────────────────────────────────────
+function scheduleSpawn() {
+  if (!state.running) return;
+  const delay = Math.max(600, 2200 - state.level * 200);
+  state.spawnTimer = setTimeout(() => { spawnWord(); scheduleSpawn(); }, delay);
+}
+
+// ─── Input handling ───────────────────────────────────────────────────────
+typebox.addEventListener('input', () => {
+  if (!state.running) return;
+  const val = typebox.value.trim();
+
+  // highlight matching words
+  let anyMatch = false;
+  for (const w of state.active) {
+    if (w.text.startsWith(val) && val.length > 0) {
+      anyMatch = true;
+      const typed = w.text.slice(0, val.length);
+      const rest  = w.text.slice(val.length);
+      w.el.innerHTML = `<span class="typed-part">${typed}</span>${rest}`;
+      w.el.classList.add('matched');
+    } else {
+      w.el.textContent = w.text;
+      w.el.classList.remove('matched');
+    }
+  }
+  typebox.classList.toggle('wrong',   !anyMatch && val.length > 0);
+  typebox.classList.toggle('correct',  anyMatch && val.length > 0);
+});
+
+typebox.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    if (!state.running) return;
+    const val = typebox.value.trim();
+    if (!val) return;
+
+    // find exact match (prefer lowest word)
+    let best = null, bestY = -Infinity;
+    for (const w of state.active) {
+      if (w.text === val && w.y > bestY) { best = w; bestY = w.y; }
+    }
+
+    if (best) {
+      burst(best);
+      best.el.remove();
+      state.active.splice(state.active.indexOf(best), 1);
+      state.combo++;
+      state.maxCombo = Math.max(state.maxCombo, state.combo);
+      state.wordsTyped++;
+
+      const pts = tierPoints(best.tier) + (state.combo > 4 ? Math.floor(state.combo / 4) : 0);
+      state.score += pts;
+      checkLevel();
+      updateHUD();
+      comboEl.textContent = state.combo > 1 ? `COMBO ×${state.combo}` : '';
+    } else {
+      state.combo = 0;
+      comboEl.textContent = '';
+      typebox.classList.add('wrong');
+      setTimeout(() => typebox.classList.remove('wrong'), 300);
+    }
+    typebox.value = '';
+    typebox.classList.remove('correct', 'wrong');
+    for (const w of state.active) {
+      w.el.textContent = w.text;
+      w.el.classList.remove('matched');
+    }
+  }
+});
+
+// ─── Burst particles ──────────────────────────────────────────────────────
+function burst(w) {
+  const rect = w.el.getBoundingClientRect();
+  const arenaRect = arena.getBoundingClientRect();
+  const cx = rect.left - arenaRect.left + rect.width / 2;
+  const cy = rect.top  - arenaRect.top  + rect.height / 2;
+  const colors = ['#88ddff','#44ff99','#ffcc44','#ff88cc','#ffffff'];
+  for (let i = 0; i < 10; i++) {
+    const p = document.createElement('div');
+    p.className = 'particle';
+    const size = randInt(4, 10);
+    const angle = (Math.PI * 2 * i) / 10 + Math.random() * 0.5;
+    const dist  = randInt(30, 70);
+    p.style.cssText = `
+      width:${size}px; height:${size}px;
+      left:${cx}px; top:${cy}px;
+      background:${colors[i % colors.length]};
+      --tx:${Math.cos(angle)*dist}px;
+      --ty:${Math.sin(angle)*dist}px;
+    `;
+    arena.appendChild(p);
+    setTimeout(() => p.remove(), 600);
+  }
+}
+
+// ─── Lose a life ──────────────────────────────────────────────────────────
+function loseLife() {
+  state.lives--;
+  state.wordsMissed++;
+  state.combo = 0;
+  comboEl.textContent = '';
+  livesEl.textContent = heartDisplay(state.lives);
+  livesEl.style.animation = 'none';
+  requestAnimationFrame(() => { livesEl.style.animation = ''; });
+
+  if (state.lives <= 0) endGame();
+}
+
+// ─── Level check ──────────────────────────────────────────────────────────
+function checkLevel() {
+  const newLevel = Math.floor(state.score / 15) + 1;
+  if (newLevel > state.level) {
+    state.level = newLevel;
+    levelEl.textContent = state.level;
+    levelFlash.classList.add('show');
+    setTimeout(() => levelFlash.classList.remove('show'), 300);
+  }
+}
+
+function updateHUD() {
+  scoreEl.textContent = state.score;
+  levelEl.textContent = state.level;
+  livesEl.textContent = heartDisplay(state.lives);
+}
+
+// ─── Grade ────────────────────────────────────────────────────────────────
+function calcGrade() {
+  const total = state.wordsTyped + state.wordsMissed;
+  const acc = total === 0 ? 0 : state.wordsTyped / total;
+  if (state.score >= 100 && acc >= 0.9) return { g: 'S', c: '#ffdd44' };
+  if (state.score >= 60  && acc >= 0.8) return { g: 'A', c: '#44ff99' };
+  if (state.score >= 30  && acc >= 0.7) return { g: 'B', c: '#88ddff' };
+  if (state.score >= 15)                return { g: 'C', c: '#aaaaff' };
+  return { g: 'D', c: '#ff6688' };
+}
+
+// ─── Start / End game ─────────────────────────────────────────────────────
+function startGame() {
+  // reset state
+  Object.assign(state, {
+    score: 0, level: 1, lives: 3,
+    combo: 0, maxCombo: 0,
+    wordsTyped: 0, wordsMissed: 0,
+    active: [], running: true,
+  });
+  arena.innerHTML = '';
+  typebox.value = '';
+  comboEl.textContent = '';
+  updateHUD();
+  bestEl.textContent = state.best;
+
+  startScreen.style.display = 'none';
+  goScreen.style.display    = 'none';
+
+  lastTime = performance.now();
+  spawnWord();
+  scheduleSpawn();
+  requestAnimationFrame(dropLoop);
+  typebox.focus();
+}
+
+function endGame() {
+  state.running = false;
+  clearTimeout(state.spawnTimer);
+
+  for (const w of state.active) w.el.remove();
+  state.active = [];
+
+  if (state.score > state.best) {
+    state.best = state.score;
+    localStorage.setItem('typing-best', state.best);
+    bestEl.textContent = state.best;
+  }
+
+  const { g, c } = calcGrade();
+  const total = state.wordsTyped + state.wordsMissed;
+  const acc   = total === 0 ? '—' : Math.round(state.wordsTyped / total * 100) + '%';
+
+  document.getElementById('grade-display').textContent = g;
+  document.getElementById('grade-display').style.color = c;
+  document.getElementById('result-text').innerHTML = `
+    <div>スコア : <strong>${state.score}</strong></div>
+    <div>ベスト : <strong>${state.best}</strong></div>
+    <div>打った単語 : <strong>${state.wordsTyped}</strong></div>
+    <div>ミス : <strong>${state.wordsMissed}</strong></div>
+    <div>精度 : <strong>${acc}</strong></div>
+    <div>最大コンボ : <strong>${state.maxCombo}</strong></div>
+    <div>到達レベル : <strong>${state.level}</strong></div>
+  `;
+  goScreen.style.display = 'flex';
+}
+
+// ─── Button / key listeners ───────────────────────────────────────────────
+document.getElementById('start-btn').addEventListener('click', startGame);
+document.getElementById('retry-btn').addEventListener('click', startGame);
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    if (startScreen.style.display !== 'none') { startGame(); return; }
+    if (goScreen.style.display   !== 'none')  { startGame(); return; }
+  }
+});
+
+// keep focus on typebox during game
+document.addEventListener('click', () => { if (state.running) typebox.focus(); });
+</script>
+</body>
+</html>
